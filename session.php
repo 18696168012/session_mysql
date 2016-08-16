@@ -6,12 +6,14 @@
 	//打开会话
 	function open_session(){
 		global $sdbc;
+		//mysqli连接数据库
 		$sdbc=mysqli_connect('localhost','root','','session');
 	}
 	//关闭会话
 	function close_session(){
-		$sdbc=mysqli_connect('localhost','root','','session');
-		//global $sdbc;
+		//$sdbc=mysqli_connect('localhost','root','','session');
+		global $sdbc;
+		//关闭数据库连接
 		return mysqli_close($sdbc);
 	}
 	//读取会话
@@ -32,9 +34,10 @@
 		$sdbc=mysqli_connect('localhost','root','','session');
 		/*global $sdbc;
 		print_r($sdbc);*/
+		//存在则更新，否则添加
 		$q=sprintf('replace into session(id,data) values("%s","%s")',mysqli_real_escape_string($sdbc,$sid),mysqli_real_escape_string($sdbc,$data));
 		$r=mysqli_query($sdbc,$q);
-		var_dump($r);
+		//var_dump($r);
 		return true;
 	}
 	//销毁会话
@@ -42,21 +45,22 @@
 		global $sdbc;
 		$q=sprintf('delete from session where id=%d',mysqli_escape_string($sdbc,$sid));
 		$r=mysqli_query($sdbc,$q);
-		var_dump($r);
+		//var_dump($r);
 		$_SESSION=array();
 		return true;
 	}
 	//垃圾回收
 	function clean_session($expire){
 		global $sdbc;
-		ECHO 1;
+		//ECHO 1;
 		$q=sprintf('delete from session where last_accessed<%d',(int)$expire);
-		echo $q;
+		//echo $q;
 		$r=mysqli_query($sdbc,$q);
-		var_dump($r); 
+		//var_dump($r); 
 		return true;
 	}
 	//使用会话处理函数
 	session_set_save_handler('open_session','close_session','read_session','write_session','destroy_session','clean_session');
 	//启动会话
 	session_start();
+	//session_write_close();
