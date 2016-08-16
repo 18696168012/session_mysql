@@ -1,62 +1,97 @@
 <?php
-	/*
-	*session入库
-	 */
-	$sdbc='';
-	//打开会话
-	function open_session(){
-		global $sdbc;
-		$sdbc=mysqli_connect('localhost','root','','session');
-	}
-	//关闭会话
-	function close_session(){
-		$sdbc=mysqli_connect('localhost','root','','session');
-		//global $sdbc;
-		return mysqli_close($sdbc);
-	}
-	//读取会话
-	function read_session($sid){
-		global $sdbc;
-		//print_r($sdbc);
-		$q=sprintf('select data from session where id=%d',mysqli_real_escape_string($sdbc,$sid));
-		$r=mysqli_query($sdbc,$q);
-		if( mysqli_num_rows($r) == 1){
-			list($data)=mysqli_fetch_array($r,MYSQLI_NUM);
-			return $data;
-		}else{
-			return '';
+	class Session{
+		private static $handler='';
+		private static $client_ip='';
+		private static $lifetime='';
+		private static $time='';
+		private static function init($handler){
+			self::$handler=$handler;
+			self::$client_ip=!empty($_SERVER['REMOTE_ADDR'])?$_SERVER['REMOTE_ADDR']:'unknown';
+			self::$lifetime=ini_get('session.gc_maxlifetime');
+			self::$time=time();
+		}
+		static function start(PDO $pdo){
+			self::init($pdo);
+			session_set_save_handler(
+				array(__CLASS__,'open'), 
+				array(__CLASS__,'close'), 
+				array(__CLASS__,'read'),
+				array(__CLASS__,'write'),
+				array(__CLASS__,'destroy'),
+				array(__CLASS__,'gc')
+				);
+			session_start();
+		}
+		public static function open($path,$name){
+			return true;
+		}
+		public static function close(){
+			return true;
+		}
+		public static function read($PHPSESSID){
+			//echo 111;
+			$sql="select * from session where PHPSESSID= ?";
+			$stmt=self::$handler->prepare($sql);
+			$stmt->execute(array($PHPSESSID));
+			if(!$result=$stmt->fetch(PDO::FETCH_ASSOC)){
+				echo 'aa';
+				return '';
+			}
+			if(self::$client_ip != $result['client_ip']){
+				echo 'bb';
+				self::destroy($PHPSESSID);
+				return '';
+			}
+			if(($result['update_time'] + self::$lifetime) <time()){
+				echo 'cc';
+				self::destroy($PHPSESSID);
+				return '';
+			}
+			//var_dump($result);
+			echo 'ee';
+			return $result['data'];
+		}
+		public static function write($PHPSESSID,$data){
+			$sql="select * from session where PHPSESSID= ?";
+			$stmt=self::$handler->prepare($sql);
+			$stmt->execute(array($PHPSESSID));
+			if($result=$stmt->fetch(PDO::FETCH_ASSOC)){
+				if($result['data'] != $data || self::$time>($result['update_time']+30)){
+					echo 22;
+					$sql="update session set update_time=?,data=? where PHPSESSID=?";
+					$stm=self::$handler->prepare($sql);
+					//print_r($stm);
+					$stm->execute(array(self::$time,$data,$PHPSESSID));
+				}
+			}else{
+				if(!empty($data)){
+					echo '33';
+					//开始插入
+					$sql="insert into session(PHPSESSID,update_time,client_ip,data) values(?,?,?,?)";
+					$sth=self::$handler->prepare($sql);
+					$sth->execute(array($PHPSESSID,self::$time,self::$client_ip,$data));
+				}
+			}
+			return true;
+		}
+		public static function destroy($id){
+			echo 44;
+			$sql='delete from session where PHPSESSID=?';
+			$stmt=self::$handler->prepare($sql);
+			$stmt->execute(array($id));
+			return true;
+		}
+		public static function gc($lifetime){
+			echo 55;
+			$sql='delete from session where update_time < ?';
+			$stmt=self::$handler->prepare($sql);
+			$stmt->execute(array(self::$time-$lifetime));
+			return true;
 		}
 	}
-	//写会话
-	function write_session($sid,$data){
-		$sdbc=mysqli_connect('localhost','root','','session');
-		/*global $sdbc;
-		print_r($sdbc);*/
-		$q=sprintf('replace into session(id,data) values("%s","%s")',mysqli_real_escape_string($sdbc,$sid),mysqli_real_escape_string($sdbc,$data));
-		$r=mysqli_query($sdbc,$q);
-		var_dump($r);
-		return true;
+	try{
+		$pdo=new pdo('mysql:host=localhost;dbname=test','root','');
+	}catch(PODException $e){
+		echo $e->getMessage();
 	}
-	//销毁会话
-	function destroy_session($sid){
-		global $sdbc;
-		$q=sprintf('delete from session where id=%d',mysqli_escape_string($sdbc,$sid));
-		$r=mysqli_query($sdbc,$q);
-		var_dump($r);
-		$_SESSION=array();
-		return true;
-	}
-	//垃圾回收
-	function clean_session($expire){
-		global $sdbc;
-		ECHO 1;
-		$q=sprintf('delete from session where last_accessed<%d',(int)$expire);
-		echo $q;
-		$r=mysqli_query($sdbc,$q);
-		var_dump($r); 
-		return true;
-	}
-	//使用会话处理函数
-	session_set_save_handler('open_session','close_session','read_session','write_session','destroy_session','clean_session');
-	//启动会话
-	session_start();
+	Session::start($pdo);
